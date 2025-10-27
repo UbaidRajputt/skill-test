@@ -1,5 +1,5 @@
 const { ApiError, sendAccountVerificationEmail } = require("../../utils");
-const { findAllStudents, findStudentDetail, findStudentToSetStatus, addOrUpdateStudent } = require("./students-repository");
+const { findAllStudents, findStudentDetail, findStudentToSetStatus, addOrUpdateStudent, deleteStudentById } = require("./students-repository");
 const { findUserById } = require("../../shared/repository");
 
 const checkStudentId = async (id) => {
@@ -29,7 +29,30 @@ const getStudentDetail = async (id) => {
     return student;
 }
 
+const validateStudentData = (data, isUpdate = false) => {
+    // Validate required fields
+    if (!data?.name || !data?.email) {
+        throw new ApiError(400, 'Name and email are required fields');
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data?.email)) {
+        throw new ApiError(400, 'Invalid email format');
+    }
+
+    // For updates, validate userId
+    if (isUpdate && (!data?.userId || isNaN(parseInt(data?.userId)))) {
+        throw new ApiError(400, 'Invalid student ID');
+    }
+
+    return true;
+};
+
 const addNewStudent = async (payload) => {
+    // Validate input data
+    validateStudentData(payload, false);
+
     const ADD_STUDENT_AND_EMAIL_SEND_SUCCESS = "Student added and verification email sent successfully.";
     const ADD_STUDENT_AND_BUT_EMAIL_SEND_FAIL = "Student added, but failed to send verification email.";
     try {
@@ -45,11 +68,17 @@ const addNewStudent = async (payload) => {
             return { message: ADD_STUDENT_AND_BUT_EMAIL_SEND_FAIL }
         }
     } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
         throw new ApiError(500, "Unable to add student");
     }
 }
 
 const updateStudent = async (payload) => {
+    // Validate input data
+    validateStudentData(payload, true);
+
     const result = await addOrUpdateStudent(payload);
     if (!result.status) {
         throw new ApiError(500, result.message);
@@ -59,14 +88,40 @@ const updateStudent = async (payload) => {
 }
 
 const setStudentStatus = async ({ userId, reviewerId, status }) => {
+    // Validate userId
+    if (!userId || isNaN(parseInt(userId))) {
+        throw new ApiError(400, 'Invalid student ID');
+    }
+
+    // Validate status
+    if (typeof status !== 'boolean') {
+        throw new ApiError(400, 'Status must be a boolean value');
+    }
+
     await checkStudentId(userId);
 
     const affectedRow = await findStudentToSetStatus({ userId, reviewerId, status });
     if (affectedRow <= 0) {
-        throw new ApiError(500, "Unable to disable student");
+        throw new ApiError(500, "Unable to change student status");
     }
 
     return { message: "Student status changed successfully" };
+}
+
+const deleteStudent = async (id) => {
+    // Validate id
+    if (!id || isNaN(parseInt(id))) {
+        throw new ApiError(400, 'Invalid student ID');
+    }
+
+    await checkStudentId(id);
+
+    const affectedRow = await deleteStudentById(id);
+    if (affectedRow <= 0) {
+        throw new ApiError(500, "Unable to delete student");
+    }
+
+    return { message: "Student deleted successfully" };
 }
 
 module.exports = {
@@ -75,4 +130,5 @@ module.exports = {
     addNewStudent,
     setStudentStatus,
     updateStudent,
+    deleteStudent,
 };

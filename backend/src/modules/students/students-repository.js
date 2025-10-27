@@ -111,11 +111,46 @@ const findStudentToUpdate = async (paylaod) => {
     return rows;
 }
 
+const deleteStudentById = async (id) => {
+    try {
+        // Start transaction
+        await processDBRequest({ query: "BEGIN", queryParams: [] });
+        
+        // First delete from user_profiles if it exists
+        const deleteProfileQuery = "DELETE FROM user_profiles WHERE user_id = $1";
+        await processDBRequest({ query: deleteProfileQuery, queryParams: [id] });
+        
+        // Then delete from users table
+        const deleteUserQuery = "DELETE FROM users WHERE id = $1 AND role_id = 3";
+        const { rowCount } = await processDBRequest({ query: deleteUserQuery, queryParams: [id] });
+        
+        if (rowCount <= 0) {
+            // If no user was deleted, rollback the transaction
+            await processDBRequest({ query: "ROLLBACK", queryParams: [] });
+            throw new Error("Student not found or not a valid student");
+        }
+        
+        // Commit transaction
+        await processDBRequest({ query: "COMMIT", queryParams: [] });
+        
+        return rowCount;
+    } catch (error) {
+        // Rollback transaction on any error
+        try {
+            await processDBRequest({ query: "ROLLBACK", queryParams: [] });
+        } catch (rollbackError) {
+            console.error("Error during rollback:", rollbackError);
+        }
+        throw error;
+    }
+}
+
 module.exports = {
     getRoleId,
     findAllStudents,
     addOrUpdateStudent,
     findStudentDetail,
     findStudentToSetStatus,
-    findStudentToUpdate
+    findStudentToUpdate,
+    deleteStudentById
 };
